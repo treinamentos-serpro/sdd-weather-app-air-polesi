@@ -46,17 +46,17 @@ function CurrentWeather({ city, current, unit }: CurrentWeatherProps) {
           <h1 className="mt-1 text-2xl font-semibold text-white" id="current-weather-title">
             {city.name}
           </h1>
-          <p className="mt-1 text-sm text-white/60">{city.label}</p>
+          <p className="mt-1 max-w-full break-words text-sm text-white/75">{city.label}</p>
         </div>
         <div className="flex items-center gap-4">
           <span aria-hidden="true" className="text-5xl leading-none">
             {condition.icon}
           </span>
           <div>
-            <p className="text-5xl font-bold tracking-tight text-white">
+            <p className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
               {formatTemperature(current.temperatureC, unit)}
             </p>
-            <p className="mt-1 text-sm text-white/70">{condition.label}</p>
+            <p className="mt-1 text-sm text-white/80">{condition.label}</p>
           </div>
         </div>
       </div>

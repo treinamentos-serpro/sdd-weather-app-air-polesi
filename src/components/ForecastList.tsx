@@ -13,7 +13,7 @@ function ForecastList({ forecast, unit }: ForecastListProps) {
         <h2 className="text-xl font-semibold text-white" id="forecast-title">
           Previsão para os próximos dias
         </h2>
-        <span className="text-sm text-white/50">{forecast.length} dias</span>
+        <span className="shrink-0 text-sm text-white/75">{forecast.length} dias</span>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {forecast.map((day) => (

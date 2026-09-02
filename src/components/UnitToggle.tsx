@@ -53,8 +53,9 @@ function UnitToggle({ unit, onChange }: UnitToggleProps) {
 
         return (
           <button
+            aria-label={`Usar ${option.label}`}
             aria-pressed={isActive}
-            className={`min-w-12 rounded-md px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-accent-400 focus:ring-offset-2 focus:ring-offset-night-900 ${
+            className={`min-h-11 min-w-12 rounded-md px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-accent-400 focus:ring-offset-2 focus:ring-offset-night-900 ${
               isActive
                 ? 'bg-accent-500 text-white'
                 : 'text-white/70 hover:bg-white/10 hover:text-white'
