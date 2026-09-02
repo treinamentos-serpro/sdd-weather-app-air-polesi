@@ -5,11 +5,28 @@ import type { City, CurrentWeather, ForecastDay, WeatherData } from '../types/we
 const GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const FORECAST_DAYS = 5;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export class WeatherServiceError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'WeatherServiceError';
+  }
+}
+
+async function fetchWithTimeout(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new WeatherServiceError('A requisição demorou demais.');
+    }
+    throw new WeatherServiceError('Falha de rede.');
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -57,12 +74,7 @@ export async function searchCities(name: string): Promise<City[]> {
 
   const url = `${GEOCODING_URL}?name=${encodeURIComponent(trimmedName)}&count=5&language=pt&format=json`;
 
-  let response: Response;
-  try {
-    response = await fetch(url);
-  } catch {
-    throw new WeatherServiceError('Não foi possível buscar cidades. Verifique sua conexão.');
-  }
+  const response = await fetchWithTimeout(url);
 
   if (!response.ok) {
     throw new WeatherServiceError('Falha ao buscar cidades. Tente novamente mais tarde.');
@@ -137,12 +149,7 @@ export async function getWeather(city: City): Promise<WeatherData> {
 
   const url = `${FORECAST_URL}?${params.toString()}`;
 
-  let response: Response;
-  try {
-    response = await fetch(url);
-  } catch {
-    throw new WeatherServiceError('Não foi possível buscar a previsão. Verifique sua conexão.');
-  }
+  const response = await fetchWithTimeout(url);
 
   if (!response.ok) {
     throw new WeatherServiceError('Falha ao buscar a previsão. Tente novamente mais tarde.');
