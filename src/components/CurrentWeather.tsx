@@ -16,7 +16,7 @@ interface MetricProps {
 function Metric({ label, value }: MetricProps) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-      <dt className="text-xs font-medium uppercase tracking-wide text-white/55">{label}</dt>
+      <dt className="text-xs font-medium uppercase tracking-wide text-white/70">{label}</dt>
       <dd className="mt-1 text-sm font-semibold text-white">{value}</dd>
     </div>
   );
