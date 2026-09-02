@@ -5,26 +5,26 @@
 A arquitetura proposta é uma aplicação frontend em React com Vite, organizada em camadas simples e bem separadas:
 
 - Camada de apresentação: componentes React responsáveis por renderizar estado, formulários, cartões do clima e mensagens de erro.
-- Camada de aplicação: hooks e funções de orquestração que coordenam busca, seleção da cidade, conversão de unidade e recomposição do estado.
-- Camada de serviço: cliente HTTP dedicado para geocodificação e consulta de previsão meteorológica usando a API Open-Meteo.
-- Camada de domínio: tipos e utilitários para normalizar dados de cidade, clima atual e previsão, além da conversão Celsius/Fahrenheit.
+- Camada de orquestração: hooks e funções que coordenam busca, seleção da cidade, carregamento de dados e sincronização do estado global.
+- Camada de serviço: cliente HTTP isolado para geocodificação e leitura de previsão usando a API Open-Meteo.
+- Camada de domínio: tipos e funções puras para normalizar dados, converter unidade e traduzir códigos meteorológicos.
 
-A solução será mobile-first, com uma página principal contendo busca, resultado atual, previsão dos próximos cinco dias e um switch de unidade. Não haverá backend, banco ou autenticação na primeira versão; toda a lógica será executada no cliente, com dados recebidos diretamente da API pública.
+A solução será mobile-first, com uma página principal contendo busca, clima atual, previsão de cinco dias e switch de unidade. Não haverá backend, banco ou autenticação na primeira versão; toda a lógica será executada no cliente, com dados recebidos diretamente da API pública.
 
 Diagrama conceitual:
 
-- Usuário -> Busca em input -> Serviço de geocodificação -> Seleção de cidade -> Serviço de previsão -> Estado da aplicação -> UI
-- Usuário -> Alternância de unidade -> Utilitário de conversão -> Re-render da UI
-- Falha de rede/timeout -> Estado de erro -> Retry action -> nova consulta
+- Usuário -> busca -> hook -> service de geocoding -> cidade selecionada -> service de forecast -> estado -> UI
+- Usuário -> alterna unidade -> função de conversão -> renderização sem novo request
+- Falha de rede/timeout -> estado de erro -> action de retry -> nova consulta
 
 ## Tech Stack
 
 - React 19: renderização declarativa e padrões de componentes simples.
 - Vite: ambiente de desenvolvimento e build rápidos.
-- TypeScript: tipagem estática para garantir contratos entre dados, serviços e UI.
-- Tailwind CSS: velocidade de layout, mobile-first e design dark glassmorphism.
+- TypeScript: tipagem estática para melhorar contratos entre dados, serviços e UI.
+- Tailwind CSS: layout responsivo, mobile-first e visual dark glassmorphism.
 - Vitest + Testing Library: testes unitários e de interação para lógica e componentes.
-- Playwright: testes E2E do fluxo principal de busca, seleção e erro.
+- Playwright: testes E2E do fluxo principal de busca, seleção e erro em viewport mobile.
 - Open-Meteo: geocodificação e previsão meteorológica, sem necessidade de API key.
 - Biome: lint e formatação consistentes.
 
@@ -37,7 +37,7 @@ Justificativa:
 
 ## Project Structure
 
-A estrutura proposta é a seguinte:
+A estrutura proposta é esta:
 
 - src/
   - components/
@@ -57,108 +57,88 @@ A estrutura proposta é a seguinte:
     - openMeteoClient
     - geocodingService
     - forecastService
-  - utils/
-    - temperature
-    - dateFormatting
-    - weatherCodeMapper
+  - lib/
+    - temperature.ts
+    - dateFormatting.ts
+    - weatherCodeMapper.ts
   - types/
     - city.ts
     - weather.ts
     - api.ts
-  - app/
-    - App.tsx
-    - state orchestration
+  - App.tsx
   - styles/
     - global.css
 
 Observações:
 
-- Um componente por arquivo, seguindo a convenção do projeto.
-- A lógica de acesso à API fica isolada em services/ para facilitar testes e trocar provedor no futuro.
-- Funções puras e utilitárias ficam em utils/ para garantir previsibilidade.
-- A conversão de unidade e o mapeamento de códigos climáticos devem ser tratadas como camada de domínio, não como lógica espalhada na UI.
+- A separação por camadas mantém apresentação, estado e acesso a dados desacoplados.
+- Componentes ficam concentrados em UI e interações simples.
+- Hooks assumem orquestração do fluxo principal e estado compartilhado.
+- Services isolam o cliente HTTP e o parsing da API pública.
+- A pasta lib/ guarda funções puras, sem efeitos colaterais, ideais para testes automatizados.
+- A convenção do projeto é respeitada: `components`, `hooks`, `services`, `types`, e a camada `lib` complementa o conjunto de funções puras e reutilizáveis.
+
+Essa separação facilita os testes porque cada responsabilidade pode ser validada por unidade sem acoplar a interface ao provedor externo.
 
 ## Data Model
 
-Os dados do sistema devem seguir contratos mínimos e bem definidos. As
-temperaturas são armazenadas em Celsius; a unidade escolhida pelo usuário é
-aplicada somente na apresentação, sem novo request à API.
+Os dados do sistema devem seguir contratos mínimos e bem definidos. As temperaturas são armazenadas em Celsius; a unidade escolhida pelo usuário é aplicada somente na apresentação, sem novo request à API.
 
 ```ts
 export type Unit = 'celsius' | 'fahrenheit';
 
 export interface City {
-  id: number; // Identificador da localidade no serviço de geocodificação.
-  name: string; // Nome da cidade.
-  country: string; // Nome ou código do país.
-  countryCode?: string; // Código ISO do país, quando fornecido.
-  admin1?: string; // Estado, província ou primeira divisão administrativa.
-  admin2?: string; // Região ou segunda divisão administrativa.
-  latitude: number; // Latitude em graus decimais.
-  longitude: number; // Longitude em graus decimais.
-  timezone: string; // Fuso horário da localidade.
-  label: string; // Texto de desambiguação para a seleção na busca.
+  id: number;
+  name: string;
+  country: string;
+  countryCode?: string;
+  admin1?: string;
+  admin2?: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  label: string;
 }
 
-### SearchResult
-- city: City
-- matchedName: string
-- isExactMatch: boolean
-
-### CurrentWeather
-
-```ts
 export interface CurrentWeather {
-  temperatureC: number; // Temperatura atual em Celsius (temperature_2m).
-  weatherCode: number; // Código WMO da condição atual (weather_code).
-  weatherDescription: string; // Descrição do código em pt-BR.
-  humidity?: number; // Umidade relativa em percentual.
-  windSpeed?: number; // Velocidade do vento em km/h.
-  pressure?: number; // Pressão atmosférica ao nível do mar em hPa.
-  precipitation?: number; // Precipitação atual em milímetros.
-  observationTime: string; // Horário da observação no fuso da cidade.
+  temperatureC: number;
+  weatherCode: number;
+  weatherDescription: string;
+  humidity?: number;
+  windSpeed?: number;
+  pressure?: number;
+  precipitation?: number;
+  observationTime: string;
 }
-```
 
-### ForecastDay
-
-```ts
 export interface ForecastDay {
-  date: string; // Data local do dia previsto (time).
-  dayLabel: string; // Data formatada para apresentação em pt-BR.
-  weatherCode: number; // Código WMO predominante do dia (weather_code).
-  weatherDescription: string; // Descrição do código em pt-BR.
-  minTemperatureC: number; // Temperatura mínima em Celsius.
-  maxTemperatureC: number; // Temperatura máxima em Celsius.
-  precipitationProbability?: number; // Probabilidade máxima de precipitação em percentual.
-  precipitationSum?: number; // Precipitação acumulada prevista em milímetros.
+  date: string;
+  dayLabel: string;
+  weatherCode: number;
+  weatherDescription: string;
+  minTemperatureC: number;
+  maxTemperatureC: number;
+  precipitationProbability?: number;
+  precipitationSum?: number;
 }
-```
 
-### ForecastResponse
-- cityId: string
-- timezone: string
-- days: ForecastDay[]
-
-### WeatherData
-
-```ts
 export interface WeatherData {
-  city: City; // Localidade selecionada pelo usuário.
-  current: CurrentWeather; // Condições meteorológicas atuais.
-  forecast: ForecastDay[]; // Cinco dias: hoje e os quatro seguintes.
+  city: City;
+  current: CurrentWeather;
+  forecast: ForecastDay[];
+}
+
+export interface AppState {
+  status: 'idle' | 'loading' | 'success' | 'empty' | 'not-found' | 'error';
+  query: string;
+  selectedCity: City | null;
+  cities: City[];
+  currentWeather: CurrentWeather | null;
+  forecast: ForecastDay[];
+  errorMessage: string | null;
+  unit: 'C' | 'F';
 }
 ```
-
-### AppState
-- status: 'idle' | 'loading' | 'success' | 'empty' | 'not-found' | 'error'
-- query: string
-- selectedCity: City | null
-- cities: City[]
-- currentWeather: CurrentWeather | null
-- forecast: ForecastDay[]
-- errorMessage: string | null
-- unit: 'C' | 'F'
 
 Esses contratos devem ser usados como fonte de verdade entre service, estado e UI. A conversão para Fahrenheit deve ser centralizada em utilitários e aplicada em um único ponto do fluxo de apresentação.
 
@@ -225,29 +205,55 @@ Fluxo de erro:
 ## External APIs
 
 ### Open-Meteo Geocoding API
-Objetivo: buscar cidades a partir de um termo textual.
 
-Parâmetros esperados:
-- name: texto da busca
-- count: quantidade de resultados relevantes
+URL:
+- https://geocoding-api.open-meteo.com/v1/search
+
+Parâmetros relevantes:
+- name: texto informado pelo usuário
+- count: quantidade de resultados esperados
 - language: pt
 - format: json
 
-Resultado esperado:
-- nome da cidade
-- país
-- estado/região
-- latitude e longitude
-- timezone
+Exemplo de request:
+- https://geocoding-api.open-meteo.com/v1/search?name=Sao%20Paulo&count=5&language=pt&format=json
 
-Responsabilidade do plano:
-- encapsular endpoint em geocodingService
-- tratar ausência de resultados, resposta incompleta e parsing defensivo
+Exemplo resumido de resposta:
+
+```json
+{
+  "results": [
+    {
+      "id": 3448439,
+      "name": "São Paulo",
+      "country": "Brazil",
+      "admin1": "São Paulo",
+      "admin2": "São Paulo",
+      "latitude": -23.5489,
+      "longitude": -46.6388,
+      "timezone": "America/Sao_Paulo"
+    }
+  ]
+}
+```
+
+Mapeamento para o modelo:
+- `id` -> `City.id`
+- `name` -> `City.name`
+- `country` -> `City.country`
+- `admin1` -> `City.admin1`
+- `admin2` -> `City.admin2`
+- `latitude` -> `City.latitude`
+- `longitude` -> `City.longitude`
+- `timezone` -> `City.timezone`
+- `label` -> composto em `City.label` com `name + admin1 + country`, quando houver dados suficientes
 
 ### Open-Meteo Forecast API
-Objetivo: carregar clima atual e previsão de cinco dias.
 
-Parâmetros esperados:
+URL:
+- https://api.open-meteo.com/v1/forecast
+
+Parâmetros relevantes:
 - latitude
 - longitude
 - current: temperatura_2m, weather_code
@@ -256,59 +262,97 @@ Parâmetros esperados:
 - forecast_days: 5
 - temperature_unit: celsius
 
-Resultado esperado:
-- clima atual com temperatura e código
-- previsão diária com cinco dias
-- timezone da localidade
+Exemplo de request:
+- https://api.open-meteo.com/v1/forecast?latitude=-23.5489&longitude=-46.6388&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=5&temperature_unit=celsius
 
-Responsabilidade do plano:
-- garantir que a janela seja hoje + 4 dias seguintes
-- validar que os dados tenham cinco entradas e que a ordem cronológica esteja correta
-- separar a transformação da API em utilitários de domínio e não misturar com renderização
+Exemplo resumido de resposta:
+
+```json
+{
+  "latitude": -23.5489,
+  "longitude": -46.6388,
+  "timezone": "America/Sao_Paulo",
+  "current": {
+    "temperature_2m": 28.4,
+    "weather_code": 2,
+    "time": "2026-09-02T14:00"
+  },
+  "daily": {
+    "time": ["2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"],
+    "weather_code": [2, 1, 61, 3, 0],
+    "temperature_2m_max": [29.1, 28.7, 27.8, 26.9, 27.5],
+    "temperature_2m_min": [21.6, 20.8, 20.1, 19.4, 20.2]
+  }
+}
+```
+
+Mapeamento para o modelo:
+- `current.temperature_2m` -> `CurrentWeather.temperatureC`
+- `current.weather_code` -> `CurrentWeather.weatherCode`
+- `current.time` -> `CurrentWeather.observationTime`
+- `daily.time[]` -> `ForecastDay.date` e `ForecastDay.dayLabel`
+- `daily.weather_code[]` -> `ForecastDay.weatherCode`
+- `daily.temperature_2m_max[]` -> `ForecastDay.maxTemperatureC`
+- `daily.temperature_2m_min[]` -> `ForecastDay.minTemperatureC`
+- `timezone` -> `WeatherData.city.timezone` ou `selectedCity.timezone`
+
+### Responsabilidade da camada de serviço
+- encapsular URL e parâmetros da API em `services/openMeteoClient.ts`
+- converter a resposta bruta em tipos do domínio em `services/geocodingService.ts` e `services/forecastService.ts`
+- tratar ausência de dados, campos nulos e listas fora de ordem antes de atualizar o estado da aplicação
 
 ## State Management
 
-A solução usará estado local em React, sem biblioteca adicional de gerenciamento de estado. O estado pode ser centralizado em um único hook ou em um componente de nível superior (App) e passado por props para componentes de leitura.
+A solução usará estado local em React, sem biblioteca adicional de gerenciamento de estado. O estado vive em um componente pai `App` ou em um hook específico como `useWeatherSearch`, que expõe valores e ações para os componentes de UI.
 
 Estratégia:
 
-- useState ou useReducer para o estado global da aplicação
-- useReducer recomendado para estados complexos com carregamento, erro, resultado e retry
+- `useState` ou `useReducer` para o estado global da aplicação
+- `useReducer` recomendado para estados complexos com carregamento, erro, resultado e retry
 - estados de UI isolados em componentes quando não compartilhados
 
-Estado principal:
-- query / input de busca
-- selectedCity
-- cities
-- currentWeather
-- forecast
-- status
-- unit
-- errorMessage
+Estados explícitos:
+- `idle`: sem busca executada
+- `loading`: busca ou forecast em andamento
+- `success`: dados válidos carregados
+- `error`: falha de rede, timeout ou API indisponível
+- `empty`: busca concluída sem resultados
 
-Vantagens:
-- simples e suficiente para o escopo
-- fácil de testar
-- evita criação de store pesado para aplicação com um fluxo principal
+Estado principal:
+- `query` / input da busca
+- `selectedCity`
+- `cities`
+- `currentWeather`
+- `forecast`
+- `status`
+- `unit`
+- `errorMessage`
+
+Conversão Celsius/Fahrenheit:
+- Os dados brutos são armazenados em Celsius como fonte única.
+- A unidade selecionada pelo usuário é um valor de apresentação (`'C' | 'F'`).
+- Na renderização, a UI deriva o valor final em tempo real com uma função pura, por exemplo:
+  - `toDisplayTemperature(valueC, unit)`
+  - `celsiusToFahrenheit(valueC)`
+- Não há novo request à API ao trocar a unidade; somente a apresentação é convertida.
 
 ## Error Handling Strategy
 
 A estratégia deve favorecer clareza e recuperação sem quebrar a interface.
 
-### Estados esperados
-- idle: sem busca ainda executada
-- loading: busca ou consulta em andamento
-- empty: nenhuma cidade encontrada ou campo vazio
-- not-found: cidade não localizada
-- success: dados carregados corretamente
-- error: falha de rede ou indisponibilidade
+### Casos tratados
+- `rede`: falha de comunicação, offline ou DNS
+- `API`: resposta inválida, JSON malformado, estrutura inesperada
+- `timeout`: requisição lenta e cancelada
+- `resposta parcial`: campos ausentes em `current` ou `daily`
+- `empty`: sem resultados para a cidade pesquisada
 
 ### Regras
 - Não mostrar resultados antigos como se fossem do estado atual após uma nova busca.
-- Mensagens em pt-BR, curtas e objetivas, sem referenciar detalhes técnicos do usuário.
+- Mensagens em pt-BR, curtas e objetivas, sem expor stack trace.
 - Retry action sempre presente quando a falha for recuperável.
 - Tratamento defensivo para API inválida, resposta em branco e campos ausentes.
-- Quando lançar erro do serviço, transformar em mensagem de produto e não expor stack trace.
+- Em caso de resposta parcial, a aplicação usa fallback ao estado de erro ou mensagem de dados incompletos.
 
 ### Estratégia de retry
 - Guardar a última intenção de busca, incluindo termo e cidade selecionada.
@@ -317,35 +361,37 @@ A estratégia deve favorecer clareza e recuperação sem quebrar a interface.
 
 ## Testing Strategy
 
-### Unit Tests (Vitest)
+### Vitest
 Cobrir:
-- conversão Celsius/Fahrenheit
+- conversão Celsius/Fahrenheit em função pura
 - normalização de dados da API
-- ordenação e validação da previsão de cinco dias
+- validação da sequência de cinco dias e ordenação cronológica
 - mapeamento de `weather_code` para descrição em pt-BR
 - validação de query vazia e busca sem resultado
-- tratamento de erros de rede e timeout
+- tratamento de erros de rede, timeout e resposta parcial
+- utilitários de label e formatação de data para pt-BR
 
-### Component Tests (Testing Library)
+### Testing Library / componentes
 Cobrir:
 - renderização do estado idle
-- carregamento visível
-- seleção de cidade a partir de resultados
-- renderização do clima atual
-- renderização da previsão de cinco dias
-- alternância de unidade
-- exibição de erro e ação de retry
+- estado de loading visível
+- estado de erro e action de retry
+- estado empty para busca sem resultados
+- sucesso com clima atual e previsão
+- alternância de unidade sem novo request
+- estados acessíveis por teclado e com labels semânticos
 
-### E2E Tests (Playwright)
+### Playwright
 Fluxos prioritários:
 1. buscar cidade existente e visualizar clima atual
-2. buscar cidade com nome ambíguo e selecionar a correta
-3. alternar Celsius/Fahrenheit e verificar consistência
+2. buscar uma cidade com nomes ambíguos e selecionar a correta
+3. alternar Celsius/Fahrenheit e verificar consistência na UI
 4. cenário de cidade não encontrada
 5. cenário de falha de rede e retry
+6. validação do layout em viewport mobile e desktop
 
 Critério de qualidade:
-- Os testes devem refletir o comportamento real da aplicação, sem depender de mocks excessivos do estado da UI.
+- Os testes devem refletir o comportamento real da aplicação sem depender de mocks excessivos do estado da UI.
 
 ## Risks & Trade-offs
 
@@ -353,11 +399,18 @@ Critério de qualidade:
 - Dependência de uma API pública pode gerar indisponibilidade ou mudança de contrato.
 - Respostas incompletas da API podem quebrar a UI se não houver validação.
 - Conversão de unidades pode divergir entre componentes se não houver utilitário único.
+- Falhas de rede e timeout precisam ser traduzidas para UX clara para não gerar confiança errada.
 
 ### Trade-offs
 - Simplicidade versus recursos extras: a aplicação prioriza busca, clima atual e previsão em cinco dias, sem backend ou cache sofisticado.
 - Estado local versus gerenciamento externo: o estado local é suficiente para a v1, evitando over-engineering.
 - API pública sem chave versus controle operacional: a escolha reduz complexidade, mas exige tolerância a falhas e feedback claro ao usuário.
+- Manter dados em Celsius no domínio versus converter em cada componente: a primeira opção reduz inconsistências e testes duplicados.
+
+### Alternativas consideradas
+- Redux/Zustand: descartado para v1 por adicionar overhead sem benefício mensurável no escopo atual.
+- Backend próprio: descartado pela regra de escopo e pela simplicidade do produto.
+- Cache complexificado: adiado para versões futuras, pois não é requisito da primeira entrega.
 
 ### Decisões adotadas
 - Sem autenticação.
